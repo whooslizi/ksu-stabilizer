@@ -7,6 +7,7 @@ POLL=15  # seconds between checks; lower = faster reaction, more wakeups
 KSUD_NICE=-10 
 APP_NICE=-6  
 HANG_TICKS=2  # main thread stuck in D for 2 polls (15-30s) = hung
+APP_OOM=0  # oom_score_adj cap for the manager (0 = same as the app on screen)
 PKGS="me.weishu.kernelsu com.rifsxd.ksunext com.sukisu.ultra"
 
 log() { echo "$(date '+%m-%d %H:%M:%S') $*" >> "$LOG" 2>/dev/null; }
@@ -151,6 +152,24 @@ check_hang() {
   fi
 }
 
+# keep the manager in RAM: battery/background exemptions, once at boot (reverted by uninstall.sh)
+exempt_apps() {
+  for pkg in $PKGS; do
+    pm path "$pkg" >/dev/null 2>&1 || continue
+    dumpsys deviceidle whitelist +"$pkg" >/dev/null 2>&1
+    cmd appops set "$pkg" RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1
+    am set-standby-bucket "$pkg" active >/dev/null 2>&1
+    log "keep: $pkg exempted from doze/background limits"
+  done
+}
+
+# Android raises oom_score_adj when the app goes to background; pull it back down every poll
+keep_alive() {
+  p=/proc/$1/oom_score_adj
+  cur=$(cat "$p" 2>/dev/null)
+  if [ "${cur:-0}" -gt "$APP_OOM" ] 2>/dev/null; then echo "$APP_OOM" > "$p" 2>/dev/null; fi
+}
+
 # ---------- watcher ----------
 watch_loop() {
   seen=""
@@ -168,6 +187,7 @@ watch_loop() {
       for pid in $(pidof "$pkg" 2>/dev/null); do
         now="$now $pid"
         need_boost "$pid" "$APP_NICE" && boost "$pid" "$APP_NICE" "$pkg" 0
+        keep_alive "$pid"
         check_hang "$pkg" "$pid"
       done
     done
@@ -184,6 +204,7 @@ main() {
   tune_buffers
   net_rules
   pick_cgroups
+  exempt_apps
   watch_loop
 }
 
