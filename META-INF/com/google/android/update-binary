@@ -1,0 +1,13 @@
+#!/sbin/sh
+umask 022
+OUTFD=$2
+ZIPFILE=$3
+ui_print() { echo "$1"; }
+mount /data 2>/dev/null
+if [ ! -f /data/adb/magisk/util_functions.sh ]; then
+  ui_print "! Install via KernelSU/Magisk manager or ksud"
+  exit 1
+fi
+. /data/adb/magisk/util_functions.sh
+install_module
+exit 0
