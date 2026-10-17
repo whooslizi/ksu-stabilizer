@@ -1,0 +1,32 @@
+name: build
+on:
+  push:
+    branches: [eoleun]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: sh -n service.sh && sh -n customize.sh
+      - name: Zip module
+        run: |
+          ver=$(sed -n 's/^version=//p' module.prop)
+          echo "ZIP=ksu_stabilizer-$ver.zip" >> "$GITHUB_ENV"
+          zip -r "ksu_stabilizer-$ver.zip" module.prop service.sh customize.sh META-INF -x '*.DS_Store'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP }}
+          path: ${{ env.ZIP }}
+      - name: Release on tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: gh release create "$GITHUB_REF_NAME" "$ZIP" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
